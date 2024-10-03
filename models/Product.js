@@ -20,6 +20,9 @@ const ProductSchema = new mongoose.Schema({
     amount: {
         type: Number,
     },
+    category: {
+        type: String
+    },
 }, {
     timestamps: true,
 })
