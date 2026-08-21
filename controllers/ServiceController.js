@@ -8,7 +8,9 @@ export const create = async (req, res) => {
             time: req.body.time,
             desc: req.body.desc,
             img: req.body.img,
-            price: req.body.price
+            price: req.body.price,
+            position: req.body.position,
+            isActive: req.body.isActive
         })
 
         const service = await doc.save()
@@ -26,7 +28,8 @@ export const create = async (req, res) => {
 export const getAll = async (req, res) => {
     try {
 
-        const services = await Service.find()
+        const services = await Service.find({ isActive: { $ne: false } })
+            .sort({ position: 1, createdAt: 1, _id: 1 })
         res.json(services)
 
     } catch (error) {
@@ -42,7 +45,11 @@ export const remove = async (req, res) => {
 
         const serviceId = req.params.id
 
-        const deletedService = await Service.findByIdAndDelete(serviceId)
+        const deletedService = await Service.findByIdAndUpdate(
+            serviceId,
+            { isActive: false },
+            { new: true }
+        )
 
         res.json(deletedService)
 

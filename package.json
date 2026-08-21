@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon index.js"
+    "start": "nodemon index.js",
+    "services:dry-run": "node scripts/update-service-price-2026.js",
+    "services:apply": "node scripts/update-service-price-2026.js --apply --confirm=APPLY_SERVICE_PRICE_2026"
   },
   "keywords": [],
   "author": "",

@@ -21,6 +21,16 @@ const Service = new mongoose.Schema({
         type: String,
         required: true
     },
+    position: {
+        type: Number,
+        default: 1000,
+        index: true
+    },
+    isActive: {
+        type: Boolean,
+        default: true,
+        index: true
+    },
 }, {
     timestamps: true,
 })
