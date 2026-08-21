@@ -9,6 +9,8 @@ export const create = async (req, res) => {
             desc: req.body.desc,
             img: req.body.img,
             price: req.body.price,
+            courseProcedures: req.body.courseProcedures,
+            coursePrice: req.body.coursePrice,
             position: req.body.position,
             isActive: req.body.isActive
         })

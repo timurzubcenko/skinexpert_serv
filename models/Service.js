@@ -7,7 +7,7 @@ const Service = new mongoose.Schema({
     },
     desc: {
         type: String,
-        required: true
+        default: ""
     },
     img: {
         type: String,
@@ -20,6 +20,14 @@ const Service = new mongoose.Schema({
     time: {
         type: String,
         required: true
+    },
+    courseProcedures: {
+        type: Number,
+        default: null
+    },
+    coursePrice: {
+        type: String,
+        default: ""
     },
     position: {
         type: Number,

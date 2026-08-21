@@ -70,6 +70,18 @@ const newServiceTimes = {
     )
 };
 
+const courseByServiceName = new Map([
+    ['Пилинг химический', { courseProcedures: 4, coursePrice: '290' }],
+    ['Карбокситерапия', { courseProcedures: 4, coursePrice: '290' }],
+    ['Массаж лица, шеи и области декольте', { courseProcedures: 5, coursePrice: '300' }],
+    ['RF лифтинг', { courseProcedures: 4, coursePrice: '310' }],
+    ['Фракционная мезотерапия (микронидлинг)', { courseProcedures: 4, coursePrice: '320' }],
+    ['Glass Skin Therapy', { courseProcedures: 4, coursePrice: '320' }],
+    ['Collagen Lift', { courseProcedures: 4, coursePrice: '320' }],
+    ['ColdPlasma', { courseProcedures: 4, coursePrice: '260' }],
+    ['Peptide Rejuvenation', { courseProcedures: 4, coursePrice: '310' }]
+].map(([name, fields]) => [normalizeName(name), fields]));
+
 const hiddenPosition = 9000;
 
 const specs = [
@@ -289,6 +301,7 @@ async function main() {
     printDuplicates(duplicates);
 
     const plan = buildPlan(docs);
+    printDescriptionCleanupPreview(plan.operations);
     printMissingMatches(plan);
     printPlan(plan.operations);
     printMissingTimes(plan.missingTimes);
@@ -384,16 +397,63 @@ function normalizeName(name) {
         .trim();
 }
 
+function removeLegacyCourseFromDesc(desc) {
+    const source = String(desc ?? '');
+    if (!/Курс\s+из\s+\d+\s+процедур/iu.test(source)) {
+        return source;
+    }
+
+    let cleaned = source
+        .replace(/\([^()]*Курс\s+из\s+\d+\s+процедур[^()]*\)\s*(?:[=—-]\s*\d+\s*€\)?)?/giu, ' ')
+        .replace(/(^|[\s—-]+)Курс\s+из\s+\d+\s+процедур(?:\s*[=—-]\s*\d+\s*€)?\)?/giu, (match, prefix) => {
+            return /^\s+$/.test(prefix) ? ' ' : '';
+        });
+
+    cleaned = cleaned
+        .replace(/\(\s*\)/g, ' ')
+        .replace(/\s+=\s*(?:\d+\s*€\)?)?/g, ' ')
+        .replace(/^[\s=—-]+/g, '')
+        .replace(/[\s=—-]+$/g, '')
+        .replace(/\s+([.,;:!?])/g, '$1')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+    return /^[()=\s—-]*$/.test(cleaned) ? '' : cleaned;
+}
+
 function keep(doc, changes) {
     return {
         name: doc.name,
-        desc: doc.desc,
+        desc: doc.desc ?? '',
         img: doc.img,
         price: doc.price,
         time: doc.time,
+        courseProcedures: doc.courseProcedures ?? null,
+        coursePrice: doc.coursePrice ?? '',
         position: doc.position ?? 1000,
         isActive: doc.isActive ?? true,
         ...changes
+    };
+}
+
+function applyCourseFields(doc) {
+    return {
+        ...doc,
+        ...courseFieldsFor(doc.name)
+    };
+}
+
+function applyDescriptionCleanup(doc) {
+    return {
+        ...doc,
+        desc: removeLegacyCourseFromDesc(doc.desc)
+    };
+}
+
+function courseFieldsFor(name) {
+    return courseByServiceName.get(normalizeName(name)) || {
+        courseProcedures: null,
+        coursePrice: ''
     };
 }
 
@@ -418,7 +478,9 @@ function buildPlan(docs) {
         }
 
         const existingDoc = matches[0] || null;
-        const desiredDoc = existingDoc ? spec.desired(existingDoc) : { ...spec.createBase };
+        const desiredDoc = applyDescriptionCleanup(
+            applyCourseFields(existingDoc ? spec.desired(existingDoc) : { ...spec.createBase })
+        );
 
         if (!desiredDoc.time) {
             missingTimes.push(desiredDoc.name);
@@ -462,26 +524,67 @@ function getAction(existingDoc, desiredDoc) {
         return 'create';
     }
 
-    const fields = ['name', 'desc', 'img', 'price', 'time', 'position', 'isActive'];
-    const hasChanges = fields.some((field) => normalizeComparable(existingDoc[field]) !== normalizeComparable(desiredDoc[field]));
+    const changedFields = getChangedFields(existingDoc, desiredDoc);
+    const hasChanges = changedFields.length > 0;
 
     if (!hasChanges) {
         return 'no-op';
     }
 
-    if (desiredDoc.isActive === false) {
+    if (changedFields.includes('isActive') && desiredDoc.isActive === false) {
         return 'hide';
     }
 
-    if (existingDoc.name !== desiredDoc.name) {
+    if (changedFields.includes('name')) {
         return 'rename/update';
     }
 
     return 'update';
 }
 
+function getChangedFields(existingDoc, desiredDoc) {
+    if (!existingDoc) {
+        return ['create'];
+    }
+
+    const fields = ['name', 'desc', 'img', 'price', 'time', 'courseProcedures', 'coursePrice', 'position', 'isActive'];
+    return fields.filter((field) => !valuesEqual(field, existingDoc[field], desiredDoc[field]));
+}
+
+function valuesEqual(field, before, after) {
+    if (field === 'courseProcedures' || field === 'coursePrice') {
+        return normalizeExact(before) === normalizeExact(after);
+    }
+
+    return normalizeComparable(before) === normalizeComparable(after);
+}
+
 function normalizeComparable(value) {
     return value === undefined ? '' : String(value);
+}
+
+function normalizeExact(value) {
+    if (value === undefined) {
+        return '[missing]';
+    }
+
+    if (value === null) {
+        return 'null';
+    }
+
+    return String(value);
+}
+
+function formatValue(value) {
+    if (value === undefined) {
+        return '[missing]';
+    }
+
+    if (value === null) {
+        return 'null';
+    }
+
+    return value;
 }
 
 function printCurrentDocs(docs) {
@@ -492,9 +595,27 @@ function printCurrentDocs(docs) {
         name: doc.name,
         price: doc.price,
         time: doc.time,
+        courseProcedures: formatValue(doc.courseProcedures),
+        coursePrice: formatValue(doc.coursePrice),
         isActive: doc.isActive ?? true,
         position: doc.position ?? ''
     })));
+}
+
+function printDescriptionCleanupPreview(operations) {
+    console.log('DESCRIPTION CLEANUP PREVIEW');
+    console.table(operations.map((operation) => {
+        const before = operation.existingDoc || {};
+        const after = operation.desiredDoc;
+
+        return {
+            name: after.name,
+            descBefore: before.desc ?? '',
+            descAfter: after.desc ?? '',
+            courseProcedures: formatValue(after.courseProcedures),
+            coursePrice: formatValue(after.coursePrice)
+        };
+    }));
 }
 
 function printDuplicates(duplicates) {
@@ -527,12 +648,15 @@ function printPlan(operations) {
 
         return {
             action: operation.action,
+            changedFields: getChangedFields(operation.existingDoc, operation.desiredDoc).join(', '),
             nameBefore: before.name || '',
             nameAfter: after.name,
             priceBefore: before.price || '',
             priceAfter: after.price,
             timeBefore: before.time || '',
             timeAfter: after.time || '[MISSING]',
+            courseProcedures: `${formatValue(before.courseProcedures)} -> ${formatValue(after.courseProcedures)}`,
+            coursePrice: `${formatValue(before.coursePrice)} -> ${formatValue(after.coursePrice)}`,
             isActive: `${before.isActive ?? ''} -> ${after.isActive}`,
             position: `${before.position ?? ''} -> ${after.position}`
         };
@@ -597,9 +721,9 @@ function verifyAppliedState(docs, operations) {
         }
 
         const doc = matches[0];
-        const fields = ['name', 'desc', 'img', 'price', 'time', 'position', 'isActive'];
+        const fields = ['name', 'desc', 'img', 'price', 'time', 'courseProcedures', 'coursePrice', 'position', 'isActive'];
         for (const field of fields) {
-            if (normalizeComparable(doc[field]) !== normalizeComparable(operation.desiredDoc[field])) {
+            if (!valuesEqual(field, doc[field], operation.desiredDoc[field])) {
                 throw new Error(`${operation.desiredDoc.name}: ${field} verification failed`);
             }
         }
